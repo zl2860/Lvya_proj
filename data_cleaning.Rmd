@@ -2,7 +2,7 @@
 title: "data_cleaning"
 author: "Zongchao"
 date: "4/26/2021"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
