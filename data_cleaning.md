@@ -49,7 +49,7 @@ unique(data$p37)
     ## [1] "1" "2" NA
 
 ``` r
-# 处理异常值 - 此处需要根据自己情况DIY！
+# 处理异常值 -  此处需要根据自己情况DIY！
 data = data %>%
   mutate(p4 = ifelse(is.na(p4), "NA", p4)) %>%
   mutate(p4 = case_when(p4 %in% c("199元","4月10日","不知道","57") == FALSE ~ p4,
