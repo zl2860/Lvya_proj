@@ -1,0 +1,86 @@
+---
+title: "data_cleaning"
+author: "Zongchao"
+date: "4/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+```
+
+# Import data & cleaning 
+
+```{r}
+data = read_excel('./data/家长问卷_刘宗超.xlsx') %>%
+    .[-1,]  %>% 
+  select(8,9,12:127)
+length(unique(data$ID))
+
+# 检查数据
+## 出生年处理策略：集中处理-2 -> 取前4个字符 -> 然后处理 "199元"，“4月10日”，“不知道”，"57"
+data[data == -2] = NA
+unique(data$p4)
+## p37处理策略：无需处理
+unique(data$p37)
+
+# 处理异常值 - 此处需要根据自己情况DIY！
+data = data %>%
+  mutate(p4 = ifelse(is.na(p4), "NA", p4)) %>%
+  mutate(p4 = case_when(p4 %in% c("199元","4月10日","不知道","57") == FALSE ~ p4,
+                        p4 == "199元" ~ "1992",
+                        p4 == "不知道" ~ "NA",
+                        p4 == "57" ~ "1957?",
+                        p4 == "4月10日" ~ "NA")) %>%
+  mutate(p4 = str_sub(p4, 1, 4),
+         p4 = ifelse(p4 == "NA", NA, p4))
+
+# 开始删行
+imp_data = data %>%
+  select(-missing) %>%
+  group_by(ID) %>%
+  fill(everything(), .direction = "down") %>%
+  fill(everything(), .direction = "up") %>%
+  slice(1)
+```
+
+# 检查结果
+
+## 检查值
+```{r}
+# 检查日期值 集合
+unique(imp_data$p4)
+# 检查房间数 集合
+unique(imp_data$p37)
+```
+
+## 检查是否填补
+
+```{r}
+missing_imp = cbind(imp_data$ID, rowSums(is.na(imp_data))) %>% as.data.frame() %>%
+  rename("ID" = "V1", "missing_imp" = V2)
+missing_original = data %>%
+  group_by(ID) %>%
+  summarise(missing_min = min(missing)) %>%
+  arrange(ID)
+
+# 在check res表格中，若 expected 为 TRUE 代表填补无问题，若为FALSE则根据ID，回到excel表格检查具体数据情况
+check_res = left_join(missing_imp, missing_original) %>%
+  mutate(missing_imp = as.numeric(as.character(missing_imp)),
+         missing_min = as.numeric(as.character(missing_min))) %>%
+  mutate(expected = ifelse(missing_imp <= missing_min, TRUE, FALSE))
+
+knitr::kable(check_res)
+```
+
+# 导出
+
+仅一条数据填补结果不符合要求（ID: 13324714），核查后发现是由于回答问卷的人操作不当所致，没有问题。
+
+```{r}
+write.csv('./问卷-已清理_刘宗超.csv',row.names = F)
+```
+
+
