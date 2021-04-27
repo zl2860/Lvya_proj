@@ -16,44 +16,74 @@ library(readxl)
 ```{r}
 data = read_excel('./data/家长问卷_刘宗超.xlsx') %>%
     .[-1,]  %>% 
-  select(8,9,12:127)
+  select(8,9,12:127) %>%
+  group_by(ID) %>%
+  mutate(keep = ifelse(missing == min(missing), "keep", "drop")) %>%
+  select(keep, everything())
 length(unique(data$ID))
 
 # 检查数据
 ## 出生年处理策略：集中处理-2 -> 取前4个字符 -> 然后处理 "199元"，“4月10日”，“不知道”，"57"
-data[data == -2] = NA
+data[data == -2] = "NA"
 unique(data$p4)
-## p37处理策略：无需处理
-unique(data$p37)
+## p35处理策略：无需处理
+unique(data$p36)
 
 # 处理异常值 -  此处需要根据自己情况DIY！
 data = data %>%
-  mutate(p4 = ifelse(is.na(p4), "NA", p4)) %>%
-  mutate(p4 = case_when(p4 %in% c("199元","4月10日","不知道","57") == FALSE ~ p4,
+  mutate(p4 = ifelse(p4 == "NA", "NA", p4)) %>%
+  mutate(p4 = case_when(p4 %in% c("199元","4月10日","不知道","57", "'200906174677") == FALSE ~ p4,
                         p4 == "199元" ~ "1992",
                         p4 == "不知道" ~ "NA",
                         p4 == "57" ~ "??57",
-                        p4 == "4月10日" ~ "NA")) %>%
-  mutate(p4 = str_sub(p4, 1, 4),
-         p4 = ifelse(p4 == "NA", NA, p4))
+                        p4 == "4月10日" ~ "NA",
+                        p4 == "'200906174677" ~ "2009")) %>%
+  mutate(p4 = str_sub(p4, 1, 4)) %>%
+  mutate(p36 = ifelse(p36 == "NA", "NA", p36),
+         p36 = case_when(p36 == "三间两层" ~ "3",
+                         p36 == "三室一厅" ~ "4",
+                         p36 == "8-9" ~ "8",
+                         p36 == "12间加一间茅房" ~ "12",
+                         p36 == "四室一厅" ~ "5",
+                         p36 == "七" ~ "7",
+                         p36 == "5-6个" ~ "5",
+                         p36 == "没有客厅4间房" ~ "4",
+                         p36 %in% c("三间两层","三室一厅", "8-9", "12间加一间茅房", "四室一厅",
+                                    "七", "5-6个", "没有客厅4间房") == FALSE ~ p36
+                         ),
+         p36 = str_remove_all(p36, "[个间]")) 
 
 # 开始删行
+## 填补规则：对一个人的多条记录，在保留原始missing数最少的记录的基础上进行填补。
+## 填补时存在以下几种情况：
+## 1. a,b两（或多）条记录missing数不等,且a缺失数>b, 则保留b，通过a填补b。
+## 2. a,b两（或多）条记录missing数相等,则同时互补a,b，保留并集。
+## 2. a,b两（或多）条记录missing数为0,则任意保留a,b其中一条。
+
 imp_data = data %>%
-  select(-missing) %>%
-  group_by(ID) %>%
+  group_by(ID, missing) %>%
+  #select(-missing) %>%
+  fill(everything(), .direction = "up") %>% 
   fill(everything(), .direction = "down") %>%
-  fill(everything(), .direction = "up") %>%
+  group_by(ID) %>%
+  slice_min(missing) %>%
+  #filter(keep == "keep") %>%
+  group_by(ID) %>%
   slice(1)
+
+imp_data[imp_data == "NA"] = NA
 ```
 
 # 检查结果
 
 ## 检查值
 ```{r}
+# 检查样本量- True: 一致
+length(unique(data$ID)) == nrow(imp_data)
 # 检查日期值 集合
 unique(imp_data$p4)
-# 检查房间数 集合
-unique(imp_data$p37)
+# 检查房间数 集合，我认为特殊的值没有做清洗
+unique(imp_data$p36)
 ```
 
 ## 检查是否填补
@@ -61,6 +91,7 @@ unique(imp_data$p37)
 ```{r}
 missing_imp = cbind(imp_data$ID, rowSums(is.na(imp_data))) %>% as.data.frame() %>%
   rename("ID" = "V1", "missing_imp" = V2)
+
 missing_original = data %>%
   group_by(ID) %>%
   summarise(missing_min = min(missing)) %>%
@@ -75,9 +106,19 @@ check_res = left_join(missing_imp, missing_original) %>%
 knitr::kable(check_res)
 ```
 
-# 导出
+# 检查结果&导出
 
-仅一条数据填补结果不符合要求（ID:13324714），核查后发现是由于回答问卷的人操作不当所致，没有问题。
+这一步基本只会排查出极少数需要具体纠察的记录，需要diy。
+
+```{r, include=FALSE}
+check_res[check_res$expected == FALSE,]
+which((data[data$ID == 12296130,][1,]) == "NA")
+which(is.na(imp_data[imp_data$ID == 12296130,]))
+```
+
+
+
+仅2条数据填补结果不符合要求（ID:13324714, 12296130），核查后发现是由于回答问卷的人操作不当所致，最终可以填补后的结果为准。
 
 ```{r}
 write.csv(imp_data, './问卷-已清理_刘宗超.csv',row.names = F)
