@@ -61,10 +61,10 @@ data = data %>%
 ## 2. a,b两（或多）条记录missing数为0,则任意保留a,b其中一条。
 
 imp_data = data %>%
-  group_by(ID, missing) %>%
-  #select(-missing) %>%
+  group_by(ID, missing) %>% 
   fill(everything(), .direction = "up") %>% 
   fill(everything(), .direction = "down") %>%
+  #先从下往上填补，再从上往下填补。这样保证了以misssing数最少的条目为基础来进行填补。这个操作对多个missing数相同，同ID的条目无影响；对同一个ID，但其中有missing数为0的条目来说，相当于先用missing为0的去填补
   group_by(ID) %>%
   slice_min(missing) %>%
   #filter(keep == "keep") %>%
@@ -121,7 +121,34 @@ which(is.na(imp_data[imp_data$ID == 12296130,]))
 仅2条数据填补结果不符合要求（ID:13324714, 12296130），核查后发现是由于回答问卷的人操作不当所致，最终可以填补后的结果为准。
 
 ```{r}
-write.csv(imp_data, './问卷-已清理_刘宗超.csv',row.names = F)
+write.csv(imp_data, './问卷-已清理_刘宗超_20210427.csv',row.names = F)
 ```
 
+
+# 填补过程
+
+填补前的数据长这样：
+
+```{r}
+data %>%
+  group_by(ID, missing) %>% 
+    head(10) %>%
+  knitr::kable()
+```
+
+基于这个结构，脑补一下填补过程：
+
+- `group_by(ID, missing)` 本身没有意义，只是为了看一眼数据
+
+- 两个fill的操作作用是充分填补所有缺失
+
+- `group_by(ID) %>% slice_min(missing)`
+
+这一步是在填补后的基础上，对每个ID的人，只保留它原始missing数最少的那条。由于上一步已经充分填补了所有条目，这一步选出来任何一条其实都是尽可能填补好的。进过slice_min后，大多数ID只会保留一条记录。但到这一步还不够，因为对某些ID来说，可能存在多个missing数本就相同的记录，这样的话即使我们用slice_min只保留missing数最少的记录，对于同一个ID来说，很有可能还是会保留2或2个以上的记录。
+
+下一步，我们需要删除一些多余的记录，实现对每个ID只保留一个记录即可。
+
+- `group_by(ID) %>% slice(1)`
+
+这一步是对每个ID的人，只保留一条记录。所有ID最终都只会有一行记录。最终一共316人。这一步看起来会有些跳跃，实际上没有问题，因为它只对同一ID下，missing数相同的多个记录起作用。若多个记录的missing数均为0，任意保留一个都是对的；若多个记录的missing数均不为0却相等，我们需要做的是随机保留一条即可。由于之前已经充分填补过，所以随机保留任何一条结果都是等效的。
 
