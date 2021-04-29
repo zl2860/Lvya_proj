@@ -61,7 +61,7 @@ data = data %>%
 ## 2. a,b两（或多）条记录missing数为0,则任意保留a,b其中一条。
 
 imp_data = data %>%
-  group_by(ID, missing) %>% 
+  group_by(ID) %>% 
   fill(everything(), .direction = "up") %>% 
   fill(everything(), .direction = "down") %>%
   #先从下往上填补，再从上往下填补。这样保证了以misssing数最少的条目为基础来进行填补。这个操作对多个missing数相同，同ID的条目无影响；对同一个ID，但其中有missing数为0的条目来说，相当于先用missing为0的去填补
@@ -121,7 +121,7 @@ which(is.na(imp_data[imp_data$ID == 12296130,]))
 仅2条数据填补结果不符合要求（ID:13324714, 12296130），核查后发现是由于回答问卷的人操作不当所致，最终可以填补后的结果为准。
 
 ```{r}
-write.csv(imp_data, './问卷-已清理_刘宗超_20210427.csv',row.names = F)
+write.csv(imp_data, './问卷-已清理_刘宗超_20210429.csv',row.names = F)
 ```
 
 
