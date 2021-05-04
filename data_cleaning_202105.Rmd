@@ -1,0 +1,134 @@
+---
+title: "data_cleaning_202105"
+author: "Zongchao"
+date: "5/4/2021"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+library(tidyverse)
+library(readxl)
+```
+
+# Import data
+
+注意：石墨下载下来的 `编号.xlsx` 不知道为什么在r里读取时会是另一个文件。需要先把 `编号.csv`再进行读取：
+
+```{r, message=FALSE, warning=FALSE}
+data = read_xlsx('./health_development/h_20210503.xlsx') %>%
+         mutate(h68 = as.numeric(h68))
+# 另存为 *.csv!
+code = read_csv('./health_development/编号 (1).csv', col_names = F) %>% select(-X3)
+```
+
+
+# 需要解决的问题
+
+- 匹配班级编号和年级编号
+
+- 清理体重
+
+- 清理身高
+
+
+## 匹配班级编号和年级编号
+
+```{r}
+# 创建`school_class`
+data = data %>% mutate(school_class = str_sub(ID, 3, 4)) %>% 
+  select(school_class,everything())
+
+# 创建`grade`
+## 先整理班级花名册
+code = code %>% 
+  filter(nchar(X1) != 1)
+
+## 匹配学号与班级，该函数返回一个匹配好班级的dataframe
+grade_gen = function(df = code){
+  class_list = df[which(is.na(code$X2)),1]$X1
+  class_idx = c(which(is.na(df$X2)),1991)
+  grade_vec = vector()
+  for (i in 2:length(class_idx)){
+    grade_vec = c(grade_vec, rep(class_list[i-1],class_idx[i] - class_idx[i-1]))
+  }
+  res = cbind(unlist(grade_vec), df) %>% .[,c(1,3)]
+  colnames(res) = c("grade", "ID")
+  return(res)
+}
+
+## 获取匹配好的数据（班级&学好）
+grade_matched = grade_gen()
+
+## 检查匹配结果，最下面那行代码返回True则匹配无误
+check_grade = grade_matched %>% filter(is.na(grade))
+sum(check_grade[,1] != check_grade[,2]) == 0
+
+## 在原始数据集创建 `grade`
+data_class_grade = left_join(data, grade_matched) %>%
+  select(grade, school_class, ID, everything()) %>%
+  mutate(grade = str_sub(grade,1,1))
+```
+
+共有1859人中共有48人未能匹配上grade，他们的ID在`编号.xlsx`中不能被查询到：
+
+```{r}
+data_class_grade %>% filter(is.na(grade)) %>%
+  select(grade, school_class, ID) %>%
+  knitr::kable()
+```
+
+## 清理体重 & 身高
+
+
+```{r}
+# 算众数
+## a simpe function for getting mode
+getmode = function(v) {
+   uniqv = unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+## 算众数
+mode = data_class_grade %>% 
+  na.omit() %>%
+  group_by(grade) %>%
+  summarise(weight_mode = getmode(h66),
+            height_mode = getmode(h68)) %>%
+  rename("h66" = "weight_mode",
+         "h68" = "height_mode")
+
+## imputation 填体重身高
+
+weight_imp = function(grade, df_mode = mode){
+  return(mode[mode[,1]== grade,]$h66)
+}
+
+height_imp = function(grade, df_mode = mode){
+    return(mode[mode[,1]== grade,]$h68)
+  }
+
+wh_imp = function(df = data_class_grade, df_mode = mode){
+  
+  df = df %>%
+    mutate(h66 = ifelse(is.na(h66)|h66 <= 45, NA, h66),
+           h68 = ifelse(is.na(h68)|h68 <= 120, NA, h68))
+  
+  df = df %>%
+    mutate(h66 = ifelse(is.na(h66)&!is.na(grade), unlist(map(.x = grade,  weight_imp)), h66),
+           h68 = ifelse(is.na(h68)&!is.na(grade), unlist(map(.x = grade, height_imp)), h68))
+  return(df)
+}
+
+### 获取填补后的数据集
+data_imp = wh_imp()
+```
+
+
+## Simple check
+
+```{r}
+skimr::skim(data_imp$h66)
+skimr::skim(data_imp$h68)
+```
+
