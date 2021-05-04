@@ -127,8 +127,16 @@ data_imp = wh_imp()
 
 ## Simple check
 
+没有填补的人是不在`编号.xlsx`中被记录的人
+
 ```{r}
 skimr::skim(data_imp$h66)
 skimr::skim(data_imp$h68)
+```
+
+
+```{r}
+unique(data_imp$h66)
+unique(data_imp$h68)
 ```
 
