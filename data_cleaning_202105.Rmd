@@ -204,5 +204,5 @@ c(mean(t$h66), sqrt(var(t$h66)), median(t$h66))
 c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))
 ```
 
-清理后，身高的 `均数，标准差，中位数` 为 `r c(mean(t$h66), sqrt(var(t$h66)), median(t$h66))`, 体重的 `均数，标准差，中位数` 为 `r c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))`.
+清理后，体重的 `均数，标准差，中位数` 为 `r c(mean(t$h66), sqrt(var(t$h66)), median(t$h66))`, 身高的 `均数，标准差，中位数` 为 `r c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))`.
 
