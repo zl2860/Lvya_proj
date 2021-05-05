@@ -101,26 +101,28 @@ mode = data_class_grade %>%
 ## imputation 填体重身高
 
 weight_imp = function(grade, df_mode = mode){
-  return(mode[mode[,1]== grade,]$h66)
+  return(mode[mode[,1] == grade,]$h66)
 }
 
 height_imp = function(grade, df_mode = mode){
-    return(mode[mode[,1]== grade,]$h68)
+    return(mode[mode[,1] == grade,]$h68)
   }
 
-wh_imp = function(df = data_class_grade, df_mode = mode){
+wh_imp = function(df = data_class_grade){
   
-  df = df %>%
+  res = df %>%
     mutate(h66 = ifelse(is.na(h66)|h66 <= 45, NA, h66),
-           h68 = ifelse(is.na(h68)|h68 <= 120, NA, h68))
-  
-  df = df %>%
-    mutate(h66 = ifelse(is.na(h66)&!is.na(grade), unlist(map(.x = grade,  weight_imp)), h66),
-           h68 = ifelse(is.na(h68)&!is.na(grade), unlist(map(.x = grade, height_imp)), h68))
-  return(df)
+           h68 = ifelse(!is.na(h68) & h68 > 1 & h68 < 2, h68*100, h68), #身高*100
+           h68 = ifelse(is.na(h68)|h68 <= 120, NA, h68)) %>%
+    mutate(h66 = ifelse(is.na(h66)&!is.na(grade), map(grade, weight_imp)[[1]], h66),
+           h68 = ifelse(is.na(h68)&!is.na(grade), map(grade,height_imp)[[1]], h68))
+    
+  return(res)
 }
 
 ### 获取填补后的数据集
+
+
 data_imp = wh_imp()
 ```
 
@@ -139,4 +141,68 @@ skimr::skim(data_imp$h68)
 unique(data_imp$h66)
 unique(data_imp$h68)
 ```
+
+## 挑选、合成变量(5.5更新)
+
+更新内容：
+
+- 生成`data_r_1` 更新的内容包含5.4～5.5晚微信提及到的内容 
+
+- 再次处理身高体重（height>=180, weight>=200 去掉，身高*100）
+
+- 删除未匹配到的样本
+
+### 生成`data_r_1` 更新的内容包含5.4～5.5晚微信提及到的内容 
+
+```{r}
+# 处理depression, h57_58, h7, h27&28
+data_r_1 = data_imp %>%
+  rowwise() %>%
+  ## 合成depression
+  mutate(depression_score = sum(c_across(h90a:h90f))) %>%
+  ## 合成h57_58
+  mutate( h57 = ifelse(h57 == -3, NA, h57),
+          h58 = ifelse(h58 == -3, NA, h58),
+          h57_58 = coalesce(h57, h58)) %>%
+  ## 合成h7
+  mutate(h7d = as.numeric(h7d)) %>% 
+  rowwise() %>%
+  mutate(h7 = sum(c_across(h7a:h7d))) %>%
+  ## h27 h28
+  mutate(friend_homo = ifelse(h1 == 1, h27, h28),
+         friend_heter = ifelse(h1 == 1, h28, h27)) %>%
+  select(friend_homo,friend_heter,depression_score, h57_58, h7, everything())
+
+data_r_1 %>%
+  head(5) %>%
+  knitr::kable()
+```
+
+- `friend_homo`: 同性
+- `friend_heter`: 异性
+
+h7-兄弟姐妹数有很多乱填的，独生子女只有 `r length(which(data_r_1$h7 == 0))`个。
+
+### 处理身高体重，删除未匹配样本
+
+```{r}
+# 身高*100的修改在前面已经完成修改
+t = data_r_1 %>%
+  filter(!is.na(grade)) %>% # 去除未匹配到的人
+  mutate(h66 = ifelse(h66 > 200, map(grade, weight_imp)[[1]], h66),
+         h68 = ifelse(h68 >180, map(grade, height_imp)[[1]], h68)) # 清理身高>180，体重>200的
+```
+
+### simple check 0505
+
+```{r}
+# 看有无漏填身高体重的
+which(is.na(t$h66))
+which(is.na(t$h68))
+
+c(mean(t$h66), sqrt(var(t$h66)), median(t$h66))
+c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))
+```
+
+清理后，身高的 `均数，标准差，中位数` 为 `r c(mean(t$h66), sqrt(var(t$h66)), median(t$h66))`, 体重的 `均数，标准差，中位数` 为 `r c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))`.
 
