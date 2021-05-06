@@ -9,6 +9,7 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
 library(tidyverse)
 library(readxl)
+library(arsenal)
 ```
 
 # Import data
@@ -156,7 +157,16 @@ unique(data_imp$h68)
 
 ```{r}
 # 处理depression, h57_58, h7, h27&28
+## h90a~h90f: 
+## 同意->不同意：1->5的题目：a（不需要recode）
+## 同意->不同意：5->1的题目：bcdef（需要recode）
+
 data_r_1 = data_imp %>%
+  mutate(h90b = as.numeric(recode(h90b, "1" = "5","2" = "4", "5" = "1", "4" = "2", "3" = "3")),
+         h90c = as.numeric(recode(h90c, "1" = "5","2" = "4", "5" = "1", "4" = "2", "3" = "3")),
+         h90d = as.numeric(recode(h90d, "1" = "5","2" = "4", "5" = "1", "4" = "2", "3" = "3")),
+         h90e = as.numeric(recode(h90e, "1" = "5","2" = "4", "5" = "1", "4" = "2", "3" = "3")),
+         h90f = as.numeric(recode(h90f, "1" = "5","2" = "4", "5" = "1", "4" = "2", "3" = "3"))) %>%
   rowwise() %>%
   ## 合成depression
   mutate(depression_score = sum(c_across(h90a:h90f))) %>%
@@ -205,4 +215,169 @@ c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))
 ```
 
 清理后，体重的 `均数，标准差，中位数` 为 `r c(mean(t$h66), sqrt(var(t$h66)), median(t$h66))`, 身高的 `均数，标准差，中位数` 为 `r c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))`.
+
+
+## 5.06更新
+
+对 `知识与态度-重编码版本-20210504.xlsx` 操作:
+
+- 去除未记录的人
+
+- 查看多少人是intervention/control
+
+- 知识得分
+
+- 态度得分
+
+### 去除未记录样本、算分
+
+```{r}
+## awareness and attitudes
+aa = read_xlsx('./attitudes/知识与态度-重编码版本-20210504.xlsx')
+aa = aa %>%
+  filter(ID %in% na.omit(code$X2)) #仅保留在记录的人
+
+## 知识得分&态度
+column_idx = function(idx, num){
+  return(paste("k", as.character(idx), ".", rep(1:num),sep = ""))
+}
+
+### 除去了4题+1题attention check
+k1 = column_idx(1,20)
+k2 = column_idx(2,20)
+k3 = column_idx(3,26)
+k4 = column_idx(4,19)
+k5 = column_idx(5,30) %>% .[-c(2,24,26)]
+k6 = column_idx(6,30) %>% .[-17]
+k7 = column_idx(7,24) %>% .[-20]
+k8 = column_idx(8,6)
+
+## 知识得分 K1~4
+
+aa = aa %>%
+  mutate(k1_score = rowSums(aa[k1]),
+         k2_score = rowSums(aa[k2]),
+         k3_score = rowSums(aa[k3]),
+         k4_score = rowSums(aa[k4]),
+         k5_score = rowSums(aa[k5]),
+         k6_score = rowSums(aa[k6]),
+         k7_score = rowSums(aa[k7]),
+         k8_score = rowSums(aa[k8])) %>%
+  select(k1_score, k2_score, k3_score, k4_score, k5_score, k6_score, k7_score, k8_score, everything()) %>%
+  rowwise() %>%
+  mutate(knowledge_total = sum(c_across(k1_score:k4_score))) %>%
+  mutate(attitude_total = sum(c_across(k5_score:k8_score))) %>%
+  select(knowledge_total, attitude_total,everything()) 
+
+aa_sub = aa %>% select(ID,knowledge_total:k8_score, intervention)
+```
+
+
+## 干预/对照情况，以及一些细节修改
+
+### 单看态度与认知的数据集
+
+
+```{r}
+# 单看态度与认知的数据集
+tbl_aa = tableby(intervention ~ . , data = aa_sub[,-1])
+summary(tbl_aa) %>%
+  knitr::kable()
+```
+
+
+接下来我们还需将`态度与认知`映射到之前的学生数据集上，一下是一些基本的清理操作：
+
+```{r}
+# 05.05清理后得到的数据集命名为“t”(temp)。（不好意思对数据不是很清楚，所以命名很乱，我会强调但你们也要看清楚）
+# 我们还需要清理或进行如下操作：
+# 1. depression 得分，在之前的代码已经做出修改
+# 2. 年级名 - 改为了ordinal categorical variables。 4 < 5 <6
+# 3. 匹配态度和认知得分
+# `t` 共有1811的记录，而态度与认知数据集共有1829个记录，在这里我们以`t`为基准哈
+
+t_aa = left_join(t, aa_sub, by="ID")
+t_aa = t_aa %>%
+  mutate(grade = recode(grade, 
+                        "四" = "4",
+                        "五" = "5",
+                        "六" = "6"),
+         grade = factor(grade, levels = c("4", "5", "6"))) %>%
+  filter(!is.na(knowledge_total))
+# `t_aa` 合并了05.05更新的数据集 `t`和05.06更新的`认知与态度`数据集
+```
+
+### 学生态度与认知简单一瞥
+
+以下数据，全部都是花名册内的学生数据。
+
+```{r}
+# 单看态度与认知的数据集
+t_aa_sub = t_aa %>% select(knowledge_total, attitude_total, k1_score, k2_score, k3_score, k4_score, k5_score, k6_score, k7_score, k8_score, intervention_h)
+
+tbl_t_aa = tableby(intervention_h ~ . , data = t_aa_sub)
+
+summary(tbl_t_aa) %>%
+  knitr::kable()
+```
+
+intervention`r sum(t_aa_sub$ID == 1)`人, control`r sum(t_aa_sub$ID == 0)`人。
+
+### 导出05.06更新的`t_aa`
+
+```{r}
+write.csv(t_aa, './data/t_aa_0506.csv', row.names = F)
+```
+
+## 0506更新：处理`家长问卷`
+
+```{r}
+parents = read_xlsx('./parents/家长问卷_20210502.xlsx')
+```
+
+### 处理
+
+- 去除无法匹配的记录
+
+- 创建所需变量
+
+```{r}
+# 去除无法匹配的记录
+parents_inlist = parents %>%
+  filter(ID %in% code$X2)
+
+# 创建所需变量
+## 设定匹配规则（根据截图）
+
+public_intervention = tibble(school = as.character(11:18),
+                             intervention = c(0,1,0,1,0,0,0,1),
+                             public = c(0,1,1,1,0,0,1,1))
+
+parents_matched = parents_inlist %>%
+  mutate(school = str_sub(ID,1,2),
+         school_class = str_sub(ID,3,4)) %>%
+  left_join(., grade_matched, by="ID") %>%
+  left_join(., public_intervention) %>%
+  mutate(grade = str_sub(grade, 1, 1),
+         grade = recode(grade, 
+                        "四" = "4",
+                        "五" = "5",
+                        "六" = "6"),
+         grade = factor(grade, levels = c("4", "5", "6"))) %>%
+  select(grade, school, school_class, intervention, public, everything()) 
+```
+
+共有`r nrow(parents_inlist)`个家长匹配成功，`r nrow(parents) - nrow(parents_inlist)`个家长匹配失败（共计 `r nrow(parents)` 人）。新创建的五个变量(`school`, `intervention`, `public`, `grade`, `school`, `class`) 无缺失。
+
+### simple check on `parents_matched`
+
+```{r}
+skimr::skim(parents_matched %>% select(grade, school, school_class, intervention, public))
+```
+
+### 导出`parents_matched`
+
+```{r}
+write.csv(parents_matched, './parents/parents_matched.csv', row.names = FALSE)
+```
 
