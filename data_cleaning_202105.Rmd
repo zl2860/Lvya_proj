@@ -171,9 +171,10 @@ data_r_1 = data_imp %>%
   ## 合成depression
   mutate(depression_score = sum(c_across(h90a:h90f))) %>%
   ## 合成h57_58
-  mutate( h57 = ifelse(h57 == -3, NA, h57),
-          h58 = ifelse(h58 == -3, NA, h58),
-          h57_58 = coalesce(h57, h58)) %>%
+  mutate( h57_m = ifelse(h57 == -3, NA, h57),
+          h58_m = ifelse(h58 == -3, NA, h58),
+          h57_58 = coalesce(h57_m, h58_m)) %>%
+  select(-h57_m, -h58_m) %>%
   ## 合成h7
   mutate(h7d = as.numeric(h7d)) %>% 
   rowwise() %>%
@@ -207,11 +208,8 @@ t = data_r_1 %>%
 
 ```{r}
 # 看有无漏填身高体重的
-which(is.na(t$h66))
-which(is.na(t$h68))
-
-c(mean(t$h66), sqrt(var(t$h66)), median(t$h66))
-c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))
+sum(is.na(t$h66)) > 0
+sum(is.na(t$h68)) > 0
 ```
 
 清理后，体重的 `均数，标准差，中位数` 为 `r c(mean(t$h66), sqrt(var(t$h66)), median(t$h66))`, 身高的 `均数，标准差，中位数` 为 `r c(mean(t$h68), sqrt(var(t$h68)), median(t$h68))`.
@@ -243,10 +241,10 @@ column_idx = function(idx, num){
 }
 
 ### 除去了4题+1题attention check
-k1 = column_idx(1,20)
-k2 = column_idx(2,20)
-k3 = column_idx(3,26)
-k4 = column_idx(4,19)
+k1 = column_idx(1,20) %>% .[-c(1,3,5,6,10,18)]
+k2 = column_idx(2,20) %>% .[-c(7,9,11,14,17,19)]
+k3 = column_idx(3,26) %>% .[-c(1,5,6,7,12,16,18,19,25)]
+k4 = column_idx(4,19) %>% .[-c(17,19)]
 k5 = column_idx(5,30) %>% .[-c(2,24,26)]
 k6 = column_idx(6,30) %>% .[-17]
 k7 = column_idx(7,24) %>% .[-20]
@@ -379,5 +377,12 @@ skimr::skim(parents_matched %>% select(grade, school, school_class, intervention
 
 ```{r}
 write.csv(parents_matched, './parents/parents_matched.csv', row.names = FALSE)
+```
+
+### 导出`t` 和 `aa_sub`
+
+```{r}
+write.csv(t, './t.csv', row.names = F)
+write.csv(aa_sub, './aa_sub.csv', row.names = F)
 ```
 
